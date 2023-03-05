@@ -51,6 +51,11 @@ main :: () {
             reg: u8 = (l & 0x3f) >> 3;
             rm: u8 = (l & 0x07);
 
+            if mod != 0x3 {
+                print_err("mod value for mov is not 11! Didn't expect that\n");
+                exit(1);
+            }
+
             dst_name, src_name: string;
             if d == 1 {
                 dst_name = ifx w then REG_WORD[reg] else REG_BYTE[reg];
