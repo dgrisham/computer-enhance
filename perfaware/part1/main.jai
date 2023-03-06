@@ -40,28 +40,28 @@ main :: () {
 
         // print("instruction %: % %\n", it_index, formatInt(h, base=2, minimum_digits=8), formatInt(l, base=2, minimum_digits=8));
 
-        opcode_mov: u8 : 0x22;
-        if (h >> 2) == opcode_mov {
+        opcode_mov: u8 : 0x88;
+        if (h & 0xfc) == opcode_mov {
             // deconstruct high byte
-            d: u8 = h & 0x2 >> 1;
-            w: u8 = h & 0x1;
+            d := h & 0x2 >> 1;
+            w := h & 0x1;
 
             // deconstruct low byte
             mod: u8 = l >> 6;
-            reg: u8 = (l & 0x3f) >> 3;
+            reg: u8 = (l & 0x38) >> 3;
             rm: u8 = (l & 0x07);
 
-            if mod != 0x3 {
+            if mod != 0x03 {
                 print_err("mod value for mov is not 11! Didn't expect that\n");
                 exit(1);
             }
 
             dst_name, src_name: string;
-            if d == 1 {
+            if d {
                 dst_name = ifx w then REG_WORD[reg] else REG_BYTE[reg];
-                src_name = ifx w then RM_WORD[rm]   else RM_BYTE[rm];
+                src_name = ifx w then REG_WORD[rm]   else REG_BYTE[rm];
             } else {
-                dst_name = ifx w then RM_WORD[rm]   else RM_BYTE[rm];
+                dst_name = ifx w then REG_WORD[rm]   else REG_BYTE[rm];
                 src_name = ifx w then REG_WORD[reg] else REG_BYTE[reg];
             }
 
@@ -97,28 +97,6 @@ REG_BYTE :: string.[
 ];
 
 REG_WORD :: string.[
-    "ax",
-    "cx",
-    "dx",
-    "bx",
-    "sp",
-    "bp",
-    "si",
-    "di",
-];
-
-RM_BYTE :: string.[
-    "al",
-    "cl",
-    "dl",
-    "bl",
-    "ah",
-    "ch",
-    "dh",
-    "bh",
-];
-
-RM_WORD :: string.[
     "ax",
     "cx",
     "dx",
