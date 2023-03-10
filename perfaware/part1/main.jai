@@ -58,54 +58,80 @@ main :: () {
 
             print("mod: %, rm: %\n", formatInt(mod, base=2, minimum_digits=2), formatInt(rm, base=2, minimum_digits=3));
 
+            reg_name := ifx w then REG_WORD[reg] else REG_BYTE[reg];
+            other_name: string; // bad name
             if mod == {
               case 0x00;
                 if rm == {
                   case 0x0; // bx + si
+                    other_name = "[bx + si]";
                   case 0x1; // bx + di
+                    other_name = "[bx + di]";
                   case 0x2; // bp + si
+                    other_name = "[bp + si]";
                   case 0x3; // bp + di
+                    other_name = "[bp + di]";
                   case 0x4; // si
+                    other_name = "[si]";
                   case 0x5; // di
+                    other_name = "[di]";
                   case 0x6; // D16
+                    other_name = tprint("[%]", (words[i+1] << 8) + words[i]);
                     i += 2;
                   case 0x7; // bx
+                    other_name = "[bx]";
                 }
               case 0x01; // low disp
+                displacement := words[i];
                 i += 1;
                 if rm == {
                   case 0x0; // bx + si + D8
+                    other_name = tprint("[bx + si + %]", displacement);
                   case 0x1; // bx + di + D8
+                    other_name = tprint("[bx + di + %]", displacement);
                   case 0x2; // bp + si + D8
+                    other_name = tprint("[bp + si + %]", displacement);
                   case 0x3; // bp + di + D8
+                    other_name = tprint("[bp + di + %]", displacement);
                   case 0x4; // si + D8
+                    other_name = tprint("[si + %]", displacement);
                   case 0x5; // di + D8
+                    other_name = tprint("[di + %]", displacement);
                   case 0x6; // bp + D8
+                    other_name = tprint("[bp + %]", displacement);
                   case 0x7; // bx + D8
+                    other_name = tprint("[bx + %]", displacement);
                 }
               case 0x02; // low + high disp
+                displacement := (words[i+1] << 8) + words[i];
                 i += 2;
+
                 if rm == {
                   case 0x0; // bx + si + D16
+                    other_name = tprint("[bx + si + %]", displacement);
                   case 0x1; // bx + di + D16
+                    other_name = tprint("[bx + di + %]", displacement);
                   case 0x2; // bp + si + D16
+                    other_name = tprint("[bp + si + %]", displacement);
                   case 0x3; // bp + di + D16
+                    other_name = tprint("[bp + di + %]", displacement);
                   case 0x4; // si + D16
+                    other_name = tprint("[si + %]", displacement);
                   case 0x5; // di + D16
+                    other_name = tprint("[di + %]", displacement);
                   case 0x6; // bp + D16
+                    other_name = tprint("[bp + %]", displacement);
                   case 0x7; // bx + D16
+                    other_name = tprint("[bx + %]", displacement);
                 }
               case 0x03;
-                dst_name, src_name: string;
-                if d {
-                    dst_name = ifx w then REG_WORD[reg] else REG_BYTE[reg];
-                    src_name = ifx w then REG_WORD[rm]   else REG_BYTE[rm];
-                } else {
-                    dst_name = ifx w then REG_WORD[rm]   else REG_BYTE[rm];
-                    src_name = ifx w then REG_WORD[reg] else REG_BYTE[reg];
-                }
-                instruction = tprint("mov %, %\n", dst_name, src_name);
+                other_name = ifx w then REG_WORD[rm]   else REG_BYTE[rm];
             }
+
+            src_name := ifx d then other_name else reg_name;
+            dst_name := ifx d then reg_name   else other_name;
+
+            instruction = tprint("mov %, %\n", dst_name, src_name);
         } else if (h & 0xf0) == opcode_immediate_to_register {
             // deconstruct high byte
             w := h & 0x08 >> 3;
@@ -115,8 +141,11 @@ main :: () {
             if w {
                 i += 1;
             }
-            instruction = "unhandled\n";
+
+            data := words[i];
             i += 1;
+
+            instruction = "unhandled\n";
         } else {
             print_err("opcode not recognized\n");
             exit(1);
