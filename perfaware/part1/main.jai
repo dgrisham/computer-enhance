@@ -44,7 +44,7 @@ main :: () {
 
         instruction: string;
         if (h & 0xfc) == opcode_mov {
-            l: u8 = words[i+1];
+            l: u8 = words[i];
             i += 1;
 
             // deconstruct high byte
