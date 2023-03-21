@@ -118,9 +118,8 @@ decode_file_to_string :: (infile: string, debug := false) -> string, string {
                     other_name = ifx displacement then tprint("[bp + %]", displacement) else "[bx]";
                 }
               case 0x02; // low + high disp
-                displacement := (words[i+1] << 8) + words[i];
+                displacement: u16 = (cast(u16)(words[i+1])) << 8 + words[i];
                 i += 2;
-
                 if rm == {
                   case 0x0; // bx + si + D16
                     other_name = tprint("[bx + si + %]", displacement);
@@ -155,12 +154,18 @@ decode_file_to_string :: (infile: string, debug := false) -> string, string {
 
             reg_name := ifx w then REG_WORD[reg] else REG_BYTE[reg];
 
-            immediate: u16 = words[i];
-            i += 1;
-
+            immediate: s16;
             if w {
-                immediate += (cast(u16)words[i]) << 8;
+                immediate = words[i];
                 i += 1;
+
+                immediate += (cast(s16)words[i]) << 8;
+                i += 1;
+            } else {
+                immediate_byte: s8 = <<(cast(*s8)*words[i]);
+                i += 1;
+
+                immediate = immediate_byte;
             }
 
             instruction = tprint("mov %, %\n", reg_name, immediate);

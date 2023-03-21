@@ -11,6 +11,7 @@ tests :: () {
 	test_listing_0037_single_register_move();
 	test_listing_0038_many_register_move();
 	test_listing_0039_more_movs();
+	test_listing_0040_challenge_movs();
 	print("passed!");
 }
 
@@ -44,6 +45,18 @@ test_listing_0039_more_movs :: () {
 	ref := sanitize_asm_string(reference);
 
 	output, error := decode_file_to_string("./listing_0039_more_movs", true);
+	assert(!error, error);
+	out := sanitize_asm_string(output);
+
+	assert(ref == out, diff(ref, out));
+}
+
+test_listing_0040_challenge_movs :: () {
+	reference, success := read_entire_file("./listing_0040_challenge_movs.asm");
+	assert(success);
+	ref := sanitize_asm_string(reference);
+
+	output, error := decode_file_to_string("./listing_0040_challenge_movs", true);
 	assert(!error, error);
 	out := sanitize_asm_string(output);
 
