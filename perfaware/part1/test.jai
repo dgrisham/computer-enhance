@@ -7,12 +7,25 @@ TESTING :: true;
 #load "main.jai";
 
 tests :: () {
-	print("running tests...");
+	print("\nRUNNING TESTS...\n\n");
+
+	print("test_listing_0037_single_register_move\n");
+	print("--------------------------------------\n\n");
 	test_listing_0037_single_register_move();
+
+	print("test_listing_0038_many_register_move\n");
+	print("------------------------------------\n\n");
 	test_listing_0038_many_register_move();
+
+	print("test_listing_0039_more_movs\n");
+	print("---------------------------\n\n");
 	test_listing_0039_more_movs();
+
+	print("test_listing_0040_challenge_movs\n");
+	print("--------------------------------\n\n");
 	test_listing_0040_challenge_movs();
-	print("passed!");
+
+	print("PASSED!\n\n");
 }
 
 test_listing_0037_single_register_move :: () {
@@ -44,7 +57,7 @@ test_listing_0039_more_movs :: () {
 	assert(success);
 	ref := sanitize_asm_string(reference);
 
-	output, error := decode_file_to_string("./listing_0039_more_movs", true);
+	output, error := decode_file_to_string("./listing_0039_more_movs");
 	assert(!error, error);
 	out := sanitize_asm_string(output);
 
