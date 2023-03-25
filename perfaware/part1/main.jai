@@ -37,228 +37,53 @@ decode_file_to_string :: (infile: string, debug := false) -> string, string {
         return "", "Failed to read file contents";
     }
 
-    words: []u8;
-    words.data = buffer;
-    words.count = length;
+    asm_bytes: []u8;
+    asm_bytes.data = buffer;
+    asm_bytes.count = length;
 
-    // for words if debug print("%: %\n", it_index, formatInt(it, base=2, minimum_digits=8));
+    // for asm_bytes if debug print("%: %\n", it_index, formatInt(it, base=2, minimum_digits=8));
 
     builder: String_Builder;
 
     print_to_builder(*builder, "; % disassembly:\n", infile);
     append(*builder, "bits 16\n");
 
-    i := 0;
     instruction_count := 0;
-    while i < words.count {
-        if debug print("byte: %\n", i);
-        h: u8 = words[i];
-        i += 1;
+    while asm_bytes.count > 0 {
+        instruction: string;
+        defer {
+            print_to_builder(*builder, instruction);
+            instruction_count += 1;
+            if debug print("%: %\n", instruction_count, instruction);
+        }
 
+        h: u8 = consume_byte(*asm_bytes);
         if debug print("instruction: %\n", formatInt(h, base=2, minimum_digits=8));
 
-        instruction: string;
-        if (h & 0xfc) == opcode_mov_rm_to_from_register {
-            l: u8 = words[i];
-            i += 1;
+        if (h & 0xfc) == {
+          case opcode_add_rm_to_reg;
+            reg_is_dest := h & 0x02 == 2;
+            is_word_length := h & 0x01 == 1;
+            instruction = decode_rm_reg("add", *asm_bytes, is_word_length, reg_is_dest, debug);
+            continue;
+          case opcode_mov_rm_to_from_register;
+            reg_is_dest := h & 0x02 == 2;
+            is_word_length := h & 0x01 == 1;
+            instruction = decode_rm_reg("mov", *asm_bytes, is_word_length, reg_is_dest, debug);
+            continue;
+        }
 
-            // deconstruct high byte
-            d := h & 0x02 >> 1;
-            w := h & 0x01;
+        if (h & 0xfe) == opcode_mov_immediate_to_rm {
+            is_word_length := h & 0x01 == 1;
+            instruction = decode_immediate_to_rm("mov", *asm_bytes, is_word_length, debug);
+            continue;
+        } else if (h & 0xfc) == opcode_add_immediate_to_rm {
+            is_word_length := h & 0x03 == 1; // sw == 01
+            instruction = decode_immediate_to_rm("add", *asm_bytes, is_word_length, debug);
+            continue;
+        }
 
-            // deconstruct low byte
-            mod: u8 = l >> 6;
-            reg: u8 = (l & 0x38) >> 3;
-            rm: u8 = (l & 0x07);
-
-            if debug print("mod: %, reg: %, rm: %\n", formatInt(mod, base=2, minimum_digits=2), formatInt(reg, base=2, minimum_digits=3), formatInt(rm, base=2, minimum_digits=3));
-
-            reg_name := ifx w then REG_WORD[reg] else REG_BYTE[reg];
-            other_name: string; // bad name
-            if mod == {
-              case 0x00;
-                if rm == {
-                  case 0x0; // bx + si
-                    other_name = "[bx + si]";
-                  case 0x1; // bx + di
-                    other_name = "[bx + di]";
-                  case 0x2; // bp + si
-                    other_name = "[bp + si]";
-                  case 0x3; // bp + di
-                    other_name = "[bp + di]";
-                  case 0x4; // si
-                    other_name = "[si]";
-                  case 0x5; // di
-                    other_name = "[di]";
-                  case 0x6; // D16
-                    other_name = tprint("[%]", (cast(s16)(words[i+1])) << 8 + words[i]);
-                    i += 2;
-                  case 0x7; // bx
-                    other_name = "[bx]";
-                }
-              case 0x01; // low disp
-                displacement := <<cast(*s8)*words[i];
-                i += 1;
-
-                sign := ifx displacement > 0 then "+" else "-";
-                magnitude := ifx displacement > 0 then displacement else -displacement;
-                if rm == {
-                  case 0x0; // bx + si + D8
-                    other_name = tprint("[bx + si % %]", sign, magnitude);
-                  case 0x1; // bx + di + D8
-                    other_name = tprint("[bx + di % %]", sign, magnitude);
-                  case 0x2; // bp + si + D8
-                    other_name = tprint("[bp + si % %]", sign, magnitude);
-                  case 0x3; // bp + di + D8
-                    other_name = tprint("[bp + di % %]", sign, magnitude);
-                  case 0x4; // si + D8
-                    other_name = ifx magnitude then tprint("[si % %]", sign, magnitude) else "[si]";
-                  case 0x5; // di + D8
-                    other_name = ifx magnitude then tprint("[di % %]", sign, magnitude) else "[di]";
-                  case 0x6; // bp + D8
-                    other_name = ifx magnitude then tprint("[bp % %]", sign, magnitude) else "[bp]";
-                  case 0x7; // bx + D8
-                    other_name = ifx magnitude then tprint("[bx % %]", sign, magnitude) else "[bx]";
-                }
-              case 0x02; // low + high disp
-                displacement: s16 = (cast(s16)(words[i+1])) << 8 + words[i];
-                i += 2;
-
-                sign := ifx displacement > 0 then "+" else "-";
-                magnitude := ifx displacement > 0 then displacement else -displacement;
-                if rm == {
-                  case 0x0; // bx + si + D16
-                    other_name = tprint("[bx + si % %]", sign, magnitude);
-                  case 0x1; // bx + di + D16
-                    other_name = tprint("[bx + di % %]", sign, magnitude);
-                  case 0x2; // bp + si + D16
-                    other_name = tprint("[bp + si % %]", sign, magnitude);
-                  case 0x3; // bp + di + D16
-                    other_name = tprint("[bp + di % %]", sign, magnitude);
-                  case 0x4; // si + D16
-                    other_name = ifx displacement then tprint("[si % %]", sign, magnitude) else "[si]";
-                  case 0x5; // di + D16
-                    other_name = ifx displacement then tprint("[di % %]", sign, magnitude) else "[di]";
-                  case 0x6; // bp + D16
-                    other_name = ifx displacement then tprint("[bp % %]", sign, magnitude) else "[bp]";
-                  case 0x7; // bx + D16
-                    other_name = ifx displacement then tprint("[bx % %]", sign, magnitude) else "[bx]";
-                }
-              case 0x03;
-                other_name = ifx w then REG_WORD[rm] else REG_BYTE[rm];
-            }
-
-            src_name := ifx d then other_name else reg_name;
-            dst_name := ifx d then reg_name   else other_name;
-
-            instruction = tprint("mov %, %\n", dst_name, src_name);
-        } else if (h & 0xfe) == opcode_mov_immediate_to_register_or_memory {
-            l: u8 = words[i];
-            i += 1;
-
-            // deconstruct low byte
-            mod: u8 = l >> 6;
-            reg: u8 = (l & 0x38) >> 3;
-            rm: u8 = (l & 0x07);
-
-            if reg != 0 { // TODO: should the reg check be part of the instruction condition?
-                return "", "malformed instruction";
-            }
-
-            w := h & 0x01;
-
-            if debug print("mod: %, reg: %, rm: %\n", formatInt(mod, base=2, minimum_digits=2), formatInt(reg, base=2, minimum_digits=3), formatInt(rm, base=2, minimum_digits=3));
-
-            dst_name: string;
-            if mod == {
-              case 0x00;
-                if rm == {
-                  case 0x0; // bx + si
-                    dst_name = "[bx + si]";
-                  case 0x1; // bx + di
-                    dst_name = "[bx + di]";
-                  case 0x2; // bp + si
-                    dst_name = "[bp + si]";
-                  case 0x3; // bp + di
-                    dst_name = "[bp + di]";
-                  case 0x4; // si
-                    dst_name = "[si]";
-                  case 0x5; // di
-                    dst_name = "[di]";
-                  case 0x6; // D16
-                    dst_name = tprint("[%]", (words[i+1] << 8) + words[i]);
-                    i += 2;
-                  case 0x7; // bx
-                    dst_name = "[bx]";
-                }
-              case 0x01; // low disp
-                displacement := <<cast(*s8)*words[i];
-                i += 1;
-
-                sign := ifx displacement > 0 then "+" else "-";
-                magnitude := ifx displacement > 0 then displacement else -displacement;
-                if rm == {
-                  case 0x0; // bx + si + D8
-                    dst_name = tprint("[bx + si % %]", sign, magnitude);
-                  case 0x1; // bx + di + D8
-                    dst_name = tprint("[bx + di % %]", sign, magnitude);
-                  case 0x2; // bp + si + D8
-                    dst_name = tprint("[bp + si % %]", sign, magnitude);
-                  case 0x3; // bp + di + D8
-                    dst_name = tprint("[bp + di % %]", sign, magnitude);
-                  case 0x4; // si + D8
-                    dst_name = ifx magnitude then tprint("[si % %]", sign, magnitude) else "[si]";
-                  case 0x5; // di + D8
-                    dst_name = ifx magnitude then tprint("[di % %]", sign, magnitude) else "[di]";
-                  case 0x6; // bp + D8
-                    dst_name = ifx magnitude then tprint("[bp % %]", sign, magnitude) else "[bp]";
-                  case 0x7; // bx + D8
-                    dst_name = ifx magnitude then tprint("[bx % %]", sign, magnitude) else "[bx]";
-                }
-              case 0x02; // low + high disp
-                displacement: s16 = (cast(s16)(words[i+1])) << 8 + words[i];
-                i += 2;
-
-                sign := ifx displacement > 0 then "+" else "-";
-                magnitude := ifx displacement > 0 then displacement else -displacement;
-                if rm == {
-                  case 0x0; // bx + si + D16
-                    dst_name = tprint("[bx + si % %]", sign, magnitude);
-                  case 0x1; // bx + di + D16
-                    dst_name = tprint("[bx + di % %]", sign, magnitude);
-                  case 0x2; // bp + si + D16
-                    dst_name = tprint("[bp + si % %]", sign, magnitude);
-                  case 0x3; // bp + di + D16
-                    dst_name = tprint("[bp + di % %]", sign, magnitude);
-                  case 0x4; // si + D16
-                    dst_name = ifx displacement then tprint("[si % %]", sign, magnitude) else "[si]";
-                  case 0x5; // di + D16
-                    dst_name = ifx displacement then tprint("[di % %]", sign, magnitude) else "[di]";
-                  case 0x6; // bp + D16
-                    dst_name = ifx displacement then tprint("[bp % %]", sign, magnitude) else "[bp]";
-                  case 0x7; // bx + D16
-                    dst_name = ifx displacement then tprint("[bx % %]", sign, magnitude) else "[bx]";
-                }
-              case 0x03;
-                dst_name = ifx w then REG_WORD[rm] else REG_BYTE[rm];
-            }
-
-            src_value: string;
-            if w {
-                immediate: s16 = (cast(s16)(words[i+1])) << 8 + words[i];
-                i += 2;
-
-                src_value = tprint("word %", immediate);
-            } else {
-                immediate: s8 = <<(cast(*s8)*words[i]);
-                i += 1;
-
-                src_value = tprint("byte %", immediate);
-            }
-
-            instruction = tprint("mov %, %\n", dst_name, src_value);
-            // instruction = "unhandled";
-        } else if (h & 0xf0) == opcode_mov_immediate_to_register {
+        if (h & 0xf0) == opcode_mov_immediate_to_register {
             // deconstruct high byte
             w := h & 0x08 >> 3;
             reg := h & 0x07;
@@ -268,44 +93,199 @@ decode_file_to_string :: (infile: string, debug := false) -> string, string {
 
             immediate: s16;
             if w {
-                immediate = words[i];
-                i += 1;
-
-                immediate += (cast(s16)words[i]) << 8;
-                i += 1;
+                immediate = consume_byte(*asm_bytes);
+                immediate += (cast(s16)consume_byte(*asm_bytes)) << 8;
             } else {
-                immediate_byte: s8 = <<(cast(*s8)*words[i]);
-                i += 1;
-
-                immediate = immediate_byte;
+                immediate = <<(cast(*s8)*consume_byte(*asm_bytes));
             }
 
             instruction = tprint("mov %, %\n", reg_name, immediate);
         } else if (h & 0xfe) == opcode_mov_memory_to_accumulator {
-            address: u16 = (cast(u16)(words[i+1])) << 8 + words[i];
-            i += 2;
-            instruction = tprint("mov ax, [%]\n", address);
+            address: u16 = (cast(u16)(asm_bytes[1])) << 8 + asm_bytes[0];
+            advance(*asm_bytes, 2);
+
+            w := h & 0x01;
+            reg_name := ifx w then "ax" else "al";
+            instruction = tprint("mov %, [%]\n", reg_name, address);
         } else if (h & 0xfe) == opcode_mov_accumulator_to_memory {
-            address: u16 = (cast(u16)(words[i+1])) << 8 + words[i];
-            i += 2;
-            instruction = tprint("mov [%], ax\n", address);
+            address: u16 = (cast(u16)(asm_bytes[1])) << 8 + asm_bytes[0];
+            advance(*asm_bytes, 2);
+
+            w := h & 0x01;
+            reg_name := ifx w then "ax" else "al";
+            instruction = tprint("mov [%], %\n", address, reg_name);
         } else {
             return "", "opcode not recognized";
         }
-
-        print_to_builder(*builder, instruction);
-        instruction_count += 1;
-        if debug print("%: %\n", instruction_count, instruction);
     }
 
     return builder_to_string(*builder), "";
 }
 
+decode_rm_reg :: (operation: string, asm_bytes: *[]u8, is_word_length: bool, reg_is_dest: bool, debug: bool) -> string {
+    l: u8 = consume_byte(asm_bytes);
+
+    // deconstruct low byte
+    mod : u8 = l >> 6;
+    reg : u8 = (l & 0x38) >> 3;
+    rm  : u8 = (l & 0x07);
+
+    if debug print("mod: %, reg: %, rm: %\n",
+        formatInt(mod, base=2, minimum_digits=2),
+        formatInt(reg, base=2, minimum_digits=3),
+        formatInt(rm, base=2, minimum_digits=3),
+    );
+
+    rm_name := decode_rm(mod, rm, is_word_length, asm_bytes);
+    reg_name := ifx is_word_length then REG_WORD[reg] else REG_BYTE[reg];
+
+    dst_name := ifx reg_is_dest then reg_name else rm_name;
+    src_name := ifx reg_is_dest then rm_name  else reg_name;
+
+    return tprint("% %, %\n", operation, dst_name, src_name);
+}
+
+decode_rm :: (mod: u8, rm: u8, is_word_length: bool, asm_bytes: *[]u8) -> string {
+    rm_name: string;
+
+    if mod == {
+      case 0x00;
+        if rm == {
+          case 0x0; // bx + si
+            rm_name = "[bx + si]";
+          case 0x1; // bx + di
+            rm_name = "[bx + di]";
+          case 0x2; // bp + si
+            rm_name = "[bp + si]";
+          case 0x3; // bp + di
+            rm_name = "[bp + di]";
+          case 0x4; // si
+            rm_name = "[si]";
+          case 0x5; // di
+            rm_name = "[di]";
+          case 0x6; // D16
+            rm_name = tprint("[%]", (cast(s16)get_byte(asm_bytes, 1)) << 8 + get_byte(asm_bytes, 0));
+            advance(asm_bytes, 2);
+          case 0x7; // bx
+            rm_name = "[bx]";
+        }
+      case 0x01; // low disp
+        displacement := <<cast(*s8)*consume_byte(asm_bytes);
+
+        sign := ifx displacement > 0 then "+" else "-";
+        magnitude := ifx displacement > 0 then displacement else -displacement;
+        if rm == {
+          case 0x0; // bx + si + D8
+            rm_name = tprint("[bx + si % %]", sign, magnitude);
+          case 0x1; // bx + di + D8
+            rm_name = tprint("[bx + di % %]", sign, magnitude);
+          case 0x2; // bp + si + D8
+            rm_name = tprint("[bp + si % %]", sign, magnitude);
+          case 0x3; // bp + di + D8
+            rm_name = tprint("[bp + di % %]", sign, magnitude);
+          case 0x4; // si + D8
+            rm_name = ifx magnitude then tprint("[si % %]", sign, magnitude) else "[si]";
+          case 0x5; // di + D8
+            rm_name = ifx magnitude then tprint("[di % %]", sign, magnitude) else "[di]";
+          case 0x6; // bp + D8
+            rm_name = ifx magnitude then tprint("[bp % %]", sign, magnitude) else "[bp]";
+          case 0x7; // bx + D8
+            rm_name = ifx magnitude then tprint("[bx % %]", sign, magnitude) else "[bx]";
+        }
+      case 0x02; // low + high disp
+        displacement: s16 = (cast(s16)(get_byte(asm_bytes, 1))) << 8 + get_byte(asm_bytes, 0);
+        advance(asm_bytes, 2);
+
+        sign := ifx displacement > 0 then "+" else "-";
+        magnitude := ifx displacement > 0 then displacement else -displacement;
+        if rm == {
+          case 0x0; // bx + si + D16
+            rm_name = tprint("[bx + si % %]", sign, magnitude);
+          case 0x1; // bx + di + D16
+            rm_name = tprint("[bx + di % %]", sign, magnitude);
+          case 0x2; // bp + si + D16
+            rm_name = tprint("[bp + si % %]", sign, magnitude);
+          case 0x3; // bp + di + D16
+            rm_name = tprint("[bp + di % %]", sign, magnitude);
+          case 0x4; // si + D16
+            rm_name = ifx displacement then tprint("[si % %]", sign, magnitude) else "[si]";
+          case 0x5; // di + D16
+            rm_name = ifx displacement then tprint("[di % %]", sign, magnitude) else "[di]";
+          case 0x6; // bp + D16
+            rm_name = ifx displacement then tprint("[bp % %]", sign, magnitude) else "[bp]";
+          case 0x7; // bx + D16
+            rm_name = ifx displacement then tprint("[bx % %]", sign, magnitude) else "[bx]";
+        }
+      case 0x03;
+        rm_name = ifx is_word_length then REG_WORD[rm] else REG_BYTE[rm];
+    }
+
+    return rm_name;
+}
+
+decode_immediate_to_rm :: (operation: string, asm_bytes: *[]u8, is_word_length: bool, debug: bool) -> string #expand {
+    l: u8 = consume_byte(asm_bytes);
+
+    // deconstruct low byte
+    mod: u8 = l >> 6;
+    reg: u8 = (l & 0x38) >> 3;
+    rm: u8 = (l & 0x07);
+
+    if reg != 0 { // TODO: should the reg check be part of the instruction condition?
+        `return "", "malformed instruction";
+    }
+
+    if debug print("mod: %, reg: %, rm: %\n",
+        formatInt(mod, base=2, minimum_digits=2),
+        formatInt(reg, base=2, minimum_digits=3),
+        formatInt(rm, base=2, minimum_digits=3),
+    );
+
+    dst_name := decode_rm(mod, rm, is_word_length, asm_bytes);
+
+    src_value: string;
+    if is_word_length {
+        immediate: s16 = (cast(s16)(get_byte(asm_bytes, 1))) << 8 + get_byte(asm_bytes, 0);
+        advance(asm_bytes, 2);
+        src_value = tprint("word %", immediate);
+    } else {
+        immediate: s8 = <<(cast(*s8)*consume_byte(asm_bytes));
+        src_value = tprint("byte %", immediate);
+    }
+
+    return tprint("% %, %\n", operation, dst_name, src_value);
+}
+
+opcode_add_rm_to_reg            : u8 : 0x00;
+opcode_add_immediate_to_rm      : u8 : 0x80;
+
+opcode_mov_immediate_to_rm      : u8 : 0xc6;
 opcode_mov_immediate_to_register: u8 : 0xb0;
-opcode_mov_immediate_to_register_or_memory: u8 : 0xc6;
-opcode_mov_rm_to_from_register: u8 : 0x88;
+opcode_mov_rm_to_from_register  : u8 : 0x88;
 opcode_mov_memory_to_accumulator: u8 : 0xa0;
 opcode_mov_accumulator_to_memory: u8 : 0xa2;
+
+advance :: inline (a: *[]u8, amount: s64 = 1) {
+    assert(amount >= 0);
+    assert(a.count >= amount);
+    a.count -= amount;
+    a.data  += amount;
+}
+
+consume_byte :: inline (a: *[]u8) -> u8 {
+    assert(a.count >= 1);
+
+    val := (<<a)[0];
+    a.count -= 1;
+    a.data  += 1;
+    return val;
+}
+
+get_byte :: inline (a: *[]u8, index: s64) -> u8 {
+    assert(index >= 0);
+    assert(index < a.count);
+    return (<<a)[index];
+}
 
 print_err :: inline (format_string: string, args: .. Any) -> bytes_printed: s64 {
     return print(format_string, args, to_standard_error=true);

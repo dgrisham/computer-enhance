@@ -25,6 +25,10 @@ tests :: () {
 	print("--------------------------------\n\n");
 	test_listing_0040_challenge_movs();
 
+	print("test_listing_0041_add_sub_cmp_jnz\n");
+	print("--------------------------------\n\n");
+	test_listing_0041_add_sub_cmp_jnz();
+
 	print("PASSED!\n\n");
 }
 
@@ -69,7 +73,19 @@ test_listing_0040_challenge_movs :: () {
 	assert(success);
 	ref := sanitize_asm_string(reference);
 
-	output, error := decode_file_to_string("./listing_0040_challenge_movs", true);
+	output, error := decode_file_to_string("./listing_0040_challenge_movs");
+	assert(!error, error);
+	out := sanitize_asm_string(output);
+
+	assert(ref == out, diff(ref, out));
+}
+
+test_listing_0041_add_sub_cmp_jnz :: () {
+	reference, success := read_entire_file("./listing_0041_add_sub_cmp_jnz.asm");
+	assert(success);
+	ref := sanitize_asm_string(reference);
+
+	output, error := decode_file_to_string("./listing_0041_add_sub_cmp_jnz", true);
 	assert(!error, error);
 	out := sanitize_asm_string(output);
 
