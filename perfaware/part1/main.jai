@@ -61,25 +61,90 @@ decode_file_to_string :: (infile: string, debug := false) -> string, string {
         if debug print("instruction: %\n", formatInt(h, base=2, minimum_digits=8));
 
         if (h & 0xfc) == {
-          case opcode_add_rm_to_reg;
-            reg_is_dest := h & 0x02 == 2;
-            is_word_length := h & 0x01 == 1;
-            instruction = decode_rm_reg("add", *asm_bytes, is_word_length, reg_is_dest, debug);
-            continue;
           case opcode_mov_rm_to_from_register;
             reg_is_dest := h & 0x02 == 2;
             is_word_length := h & 0x01 == 1;
-            instruction = decode_rm_reg("mov", *asm_bytes, is_word_length, reg_is_dest, debug);
+            instruction = decode_rm_reg("mov", is_word_length, *asm_bytes, reg_is_dest, debug);
+            continue;
+          case opcode_add_rm_to_reg;
+            reg_is_dest := h & 0x02 == 2;
+            is_word_length := h & 0x01 == 1;
+            instruction = decode_rm_reg("add", is_word_length, *asm_bytes, reg_is_dest, debug);
+            continue;
+          case opcode_sub_rm_from_reg;
+            reg_is_dest := h & 0x02 == 2;
+            is_word_length := h & 0x01 == 1;
+            instruction = decode_rm_reg("sub", is_word_length, *asm_bytes, reg_is_dest, debug);
+            continue;
+          case opcode_cmp_rm_and_reg;
+            reg_is_dest := h & 0x02 == 2;
+            is_word_length := h & 0x01 == 1;
+            instruction = decode_rm_reg("cmp", is_word_length, *asm_bytes, reg_is_dest, debug);
             continue;
         }
 
         if (h & 0xfe) == opcode_mov_immediate_to_rm {
             is_word_length := h & 0x01 == 1;
-            instruction = decode_immediate_to_rm("mov", *asm_bytes, is_word_length, debug);
+            instruction = decode_immediate_to_rm("mov", is_word_length, *asm_bytes, debug);
             continue;
-        } else if (h & 0xfc) == opcode_add_immediate_to_rm {
+        } else if (h & 0xfc) == opcode_immediate_rm_operation {
             is_word_length := h & 0x03 == 1; // sw == 01
-            instruction = decode_immediate_to_rm("add", *asm_bytes, is_word_length, debug);
+            instruction = decode_opcode_immediate_rm_operation (is_word_length, *asm_bytes, debug);
+            continue;
+        }
+
+        if (h & 0xfe) == opcode_mov_memory_to_accumulator {
+            address: u16 = (cast(u16)(asm_bytes[1])) << 8 + asm_bytes[0];
+            advance(*asm_bytes, 2);
+
+            w := h & 0x01;
+            reg_name := ifx w then "ax" else "al";
+            instruction = tprint("mov %, [%]\n", reg_name, address);
+            continue;
+        }
+
+        if (h & 0xfe) == {
+          case opcode_add_immediate_to_accumulator;
+            w := h & 0x01;
+
+            immediate: s16;
+            if w {
+                immediate = (cast(s16)(asm_bytes[1])) << 8 + asm_bytes[0];
+                advance(*asm_bytes, 2);
+            } else {
+                immediate = <<(cast(*s8)*consume_byte(*asm_bytes));
+            }
+
+            reg_name := ifx w then "ax" else "al";
+            instruction = tprint("add %, %\n", reg_name, immediate);
+            continue;
+          case opcode_sub_immediate_from_accumulator;
+            w := h & 0x01;
+
+            immediate: s16;
+            if w {
+                immediate = (cast(s16)(asm_bytes[1])) << 8 + asm_bytes[0];
+                advance(*asm_bytes, 2);
+            } else {
+                immediate = <<(cast(*s8)*consume_byte(*asm_bytes));
+            }
+
+            reg_name := ifx w then "ax" else "al";
+            instruction = tprint("sub %, %\n", reg_name, immediate);
+            continue;
+          case opcode_cmp_immediate_and_accumulator;
+            w := h & 0x01;
+
+            immediate: s16;
+            if w {
+                immediate = (cast(s16)(asm_bytes[1])) << 8 + asm_bytes[0];
+                advance(*asm_bytes, 2);
+            } else {
+                immediate = <<(cast(*s8)*consume_byte(*asm_bytes));
+            }
+
+            reg_name := ifx w then "ax" else "al";
+            instruction = tprint("cmp %, %\n", reg_name, immediate);
             continue;
         }
 
@@ -93,20 +158,13 @@ decode_file_to_string :: (infile: string, debug := false) -> string, string {
 
             immediate: s16;
             if w {
-                immediate = consume_byte(*asm_bytes);
-                immediate += (cast(s16)consume_byte(*asm_bytes)) << 8;
+                immediate = (cast(s16)(asm_bytes[1])) << 8 + asm_bytes[0];
+                advance(*asm_bytes, 2);
             } else {
                 immediate = <<(cast(*s8)*consume_byte(*asm_bytes));
             }
 
             instruction = tprint("mov %, %\n", reg_name, immediate);
-        } else if (h & 0xfe) == opcode_mov_memory_to_accumulator {
-            address: u16 = (cast(u16)(asm_bytes[1])) << 8 + asm_bytes[0];
-            advance(*asm_bytes, 2);
-
-            w := h & 0x01;
-            reg_name := ifx w then "ax" else "al";
-            instruction = tprint("mov %, [%]\n", reg_name, address);
         } else if (h & 0xfe) == opcode_mov_accumulator_to_memory {
             address: u16 = (cast(u16)(asm_bytes[1])) << 8 + asm_bytes[0];
             advance(*asm_bytes, 2);
@@ -115,14 +173,14 @@ decode_file_to_string :: (infile: string, debug := false) -> string, string {
             reg_name := ifx w then "ax" else "al";
             instruction = tprint("mov [%], %\n", address, reg_name);
         } else {
-            return "", "opcode not recognized";
+            return "", "unimplemented opcode";
         }
     }
 
     return builder_to_string(*builder), "";
 }
 
-decode_rm_reg :: (operation: string, asm_bytes: *[]u8, is_word_length: bool, reg_is_dest: bool, debug: bool) -> string {
+decode_rm_reg :: (operation: string, is_word_length: bool, asm_bytes: *[]u8, reg_is_dest: bool, debug: bool) -> string {
     l: u8 = consume_byte(asm_bytes);
 
     // deconstruct low byte
@@ -143,6 +201,80 @@ decode_rm_reg :: (operation: string, asm_bytes: *[]u8, is_word_length: bool, reg
     src_name := ifx reg_is_dest then rm_name  else reg_name;
 
     return tprint("% %, %\n", operation, dst_name, src_name);
+}
+
+decode_immediate_to_rm :: (operation: string, is_word_length: bool, asm_bytes: *[]u8, debug: bool) -> string #expand {
+    l: u8 = consume_byte(asm_bytes);
+
+    // deconstruct low byte
+    mod: u8 = l >> 6;
+    reg: u8 = (l & 0x38) >> 3;
+    rm: u8 = (l & 0x07);
+
+    if reg != 0 { // TODO: should the reg check be part of the instruction condition?
+        `return "", "malformed instruction";
+    }
+
+    if debug print("mod: %, reg: %, rm: %\n",
+        formatInt(mod, base=2, minimum_digits=2),
+        formatInt(reg, base=2, minimum_digits=3),
+        formatInt(rm, base=2, minimum_digits=3),
+    );
+
+    dst_name := decode_rm(mod, rm, is_word_length, asm_bytes);
+
+    src_value: string;
+    if is_word_length {
+        immediate: s16 = (cast(s16)(get_byte(asm_bytes, 1))) << 8 + get_byte(asm_bytes, 0);
+        advance(asm_bytes, 2);
+        src_value = tprint("word %", immediate);
+    } else {
+        immediate: s8 = <<(cast(*s8)*consume_byte(asm_bytes));
+        src_value = tprint("byte %", immediate);
+    }
+
+    return tprint("% %, %\n", operation, dst_name, src_value);
+}
+
+decode_opcode_immediate_rm_operation  :: (is_word_length: bool, asm_bytes: *[]u8, debug: bool) -> string #expand {
+    l: u8 = consume_byte(asm_bytes);
+
+    // deconstruct low byte
+    mod: u8 = l >> 6;
+    reg: u8 = (l & 0x38) >> 3;
+    rm: u8 = (l & 0x07);
+
+    operation: string;
+    if reg == { // TODO: should the reg check be part of the instruction condition?
+      case 0x0;
+        operation = "add";
+      case 0x5;
+        operation = "sub";
+      case 0x7;
+        operation = "cmp";
+      case;
+        `return "", "encountered bad reg value when decoding immediate op";
+    }
+
+    if debug print("mod: %, reg: %, rm: %\n",
+        formatInt(mod, base=2, minimum_digits=2),
+        formatInt(reg, base=2, minimum_digits=3),
+        formatInt(rm, base=2, minimum_digits=3),
+    );
+
+    dst_name := decode_rm(mod, rm, is_word_length, asm_bytes);
+
+    src_value: string;
+    if is_word_length {
+        immediate: s16 = (cast(s16)(get_byte(asm_bytes, 1))) << 8 + get_byte(asm_bytes, 0);
+        advance(asm_bytes, 2);
+        src_value = tprint("word %", immediate);
+    } else {
+        immediate: s8 = <<(cast(*s8)*consume_byte(asm_bytes));
+        src_value = tprint("byte %", immediate);
+    }
+
+    return tprint("% %, %\n", operation, dst_name, src_value);
 }
 
 decode_rm :: (mod: u8, rm: u8, is_word_length: bool, asm_bytes: *[]u8) -> string {
@@ -223,41 +355,19 @@ decode_rm :: (mod: u8, rm: u8, is_word_length: bool, asm_bytes: *[]u8) -> string
     return rm_name;
 }
 
-decode_immediate_to_rm :: (operation: string, asm_bytes: *[]u8, is_word_length: bool, debug: bool) -> string #expand {
-    l: u8 = consume_byte(asm_bytes);
+opcode_immediate_rm_operation : u8 : 0x80;
 
-    // deconstruct low byte
-    mod: u8 = l >> 6;
-    reg: u8 = (l & 0x38) >> 3;
-    rm: u8 = (l & 0x07);
+opcode_add_rm_to_reg                : u8 : 0x00;
+// opcode_add_immediate_to_rm          : u8 : 0x80;
+opcode_add_immediate_to_accumulator : u8 : 0x04;
 
-    if reg != 0 { // TODO: should the reg check be part of the instruction condition?
-        `return "", "malformed instruction";
-    }
+opcode_sub_rm_from_reg                : u8 : 0x28;
+// opcode_sub_immediate_from_rm          : u8 : 0x80; // SAME AS ADD IMM TO RM !!! REG = 101
+opcode_sub_immediate_from_accumulator : u8 : 0x2c;
 
-    if debug print("mod: %, reg: %, rm: %\n",
-        formatInt(mod, base=2, minimum_digits=2),
-        formatInt(reg, base=2, minimum_digits=3),
-        formatInt(rm, base=2, minimum_digits=3),
-    );
-
-    dst_name := decode_rm(mod, rm, is_word_length, asm_bytes);
-
-    src_value: string;
-    if is_word_length {
-        immediate: s16 = (cast(s16)(get_byte(asm_bytes, 1))) << 8 + get_byte(asm_bytes, 0);
-        advance(asm_bytes, 2);
-        src_value = tprint("word %", immediate);
-    } else {
-        immediate: s8 = <<(cast(*s8)*consume_byte(asm_bytes));
-        src_value = tprint("byte %", immediate);
-    }
-
-    return tprint("% %, %\n", operation, dst_name, src_value);
-}
-
-opcode_add_rm_to_reg            : u8 : 0x00;
-opcode_add_immediate_to_rm      : u8 : 0x80;
+opcode_cmp_rm_and_reg                : u8 : 0x38;
+// opcode_cmp_immediate_and_rm          : u8 : 0x80; // SAME AS ADD IMM TO RM !!! REG = 111
+opcode_cmp_immediate_and_accumulator : u8 : 0x3c;
 
 opcode_mov_immediate_to_rm      : u8 : 0xc6;
 opcode_mov_immediate_to_register: u8 : 0xb0;
